@@ -1,0 +1,49 @@
+name: Daily Basis Update
+
+on:
+  schedule:
+    # 09:15 UTC = 17:15 北京时间（周一至周五，收盘后）。
+    # 注意：GitHub Actions 定时任务常有数分钟到数十分钟延迟，不保证准点；
+    #       脚本内部会自行判断交易日，非交易日自动跳过。
+    - cron: '15 9 * * 1-5'
+  workflow_dispatch: {}   # 支持在 Actions 页面手动触发
+
+permissions:
+  contents: write          # 允许把更新后的数据/图表 commit 回仓库
+
+concurrency:
+  group: daily-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run daily update + plot
+        run: python scripts/02_current_analysis.py
+
+      - name: Commit & push results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data output
+          if git diff --staged --quiet; then
+            echo "No changes to commit (non-trading day or data unavailable)."
+          else
+            git commit -m "data: daily basis update ($(date -u +'%Y-%m-%d'))"
+            git push
+          fi
